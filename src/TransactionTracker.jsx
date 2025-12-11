@@ -2,14 +2,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import TransactionForm from './components/TransactionForm';
 import TransactionList from './components/TransactionList';
-// Korrekter relativer Pfad
-import { fetchTransactions, addTransaction, deleteTransaction } from './api/mongoApi'; 
+// WICHTIG: addTransaction durch createTransaction ersetzen
+import { fetchTransactions, createTransaction, deleteTransaction } from './api/mongoApi'; 
 
 function TransactionTracker() {
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // loadData bleibt, um den Initialzustand zu laden und bei Bedarf zu aktualisieren
     const loadData = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -18,7 +19,6 @@ function TransactionTracker() {
             setTransactions(data);
         } catch (err) {
             console.error("Fehler beim Laden der Daten:", err);
-            // Nutzt die vom handleResponse geworfene Fehlermeldung
             setError(err.message || "Daten konnten nicht von der API geladen werden."); 
         } finally {
             setLoading(false);
@@ -32,9 +32,14 @@ function TransactionTracker() {
     const handleAdd = async (transactionData) => {
         setError(null);
         try {
-            await addTransaction(transactionData);
+            // **Performance-Verbesserung:** Füge die von der API zurückgegebene Transaktion direkt hinzu
+            const newTransactionWithId = await createTransaction(transactionData);
+            
+            // Lokalen State aktualisieren, anstatt alle Daten neu zu laden
+            setTransactions(prev => [...prev, newTransactionWithId]); 
+            
             alert('Transaktion erfolgreich hinzugefügt!');
-            loadData();
+            // loadData(); // NICHT MEHR NÖTIG
         } catch (err) {
             console.error("Fehler beim Hinzufügen:", err);
             setError(err.message || "Transaktion konnte nicht gespeichert werden.");
@@ -47,8 +52,12 @@ function TransactionTracker() {
 
         try {
             await deleteTransaction(id);
+            
+            // **Performance-Verbesserung:** Gelöschte Transaktion lokal filtern
+            setTransactions(prev => prev.filter(t => t.id !== id)); 
+            
             alert('Transaktion erfolgreich gelöscht!');
-            loadData();
+            // loadData(); // NICHT MEHR NÖTIG
         } catch (err) {
             console.error("Fehler beim Löschen:", err);
             setError(err.message || "Transaktion konnte nicht gelöscht werden.");
@@ -56,7 +65,9 @@ function TransactionTracker() {
     };
 
     const totalBalance = transactions.reduce((acc, t) => {
-        return acc + (t.type === 'Einnahme' ? t.amount : -t.amount);
+        // Robusterer Umgang mit nicht-numerischen Beträgen, falls die API sie zulässt
+        const amount = typeof t.amount === 'number' ? t.amount : 0;
+        return acc + (t.type === 'Einnahme' ? amount : -amount);
     }, 0);
     
     return (
@@ -80,7 +91,7 @@ function TransactionTracker() {
                     onDelete={handleDelete} 
                 />
             )}
-            
+            {error && <p style={{ color: 'red', fontWeight: 'bold' }}>Fehler: {error}</p>}
         </div>
     );
 }
