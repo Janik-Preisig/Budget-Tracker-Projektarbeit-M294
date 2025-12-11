@@ -1,14 +1,15 @@
-// src/TransactionTracker.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import TransactionForm from './components/TransactionForm';
 import TransactionList from './components/TransactionList';
-// WICHTIG: addTransaction durch createTransaction ersetzen
 import { fetchTransactions, createTransaction, deleteTransaction } from './api/mongoApi'; 
+import './App.css'; // Import des zentralen CSS beibehalten
 
 function TransactionTracker() {
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    // NEUER STATE: Für die Gehalts-Eingabe und den Wert, der hinzugefügt wird
+    const [salaryInput, setSalaryInput] = useState(0); 
 
     // loadData bleibt, um den Initialzustand zu laden und bei Bedarf zu aktualisieren
     const loadData = useCallback(async () => {
@@ -32,14 +33,9 @@ function TransactionTracker() {
     const handleAdd = async (transactionData) => {
         setError(null);
         try {
-            // **Performance-Verbesserung:** Füge die von der API zurückgegebene Transaktion direkt hinzu
             const newTransactionWithId = await createTransaction(transactionData);
-            
-            // Lokalen State aktualisieren, anstatt alle Daten neu zu laden
             setTransactions(prev => [...prev, newTransactionWithId]); 
-            
             alert('Transaktion erfolgreich hinzugefügt!');
-            // loadData(); // NICHT MEHR NÖTIG
         } catch (err) {
             console.error("Fehler beim Hinzufügen:", err);
             setError(err.message || "Transaktion konnte nicht gespeichert werden.");
@@ -52,46 +48,97 @@ function TransactionTracker() {
 
         try {
             await deleteTransaction(id);
-            
-            // **Performance-Verbesserung:** Gelöschte Transaktion lokal filtern
             setTransactions(prev => prev.filter(t => t.id !== id)); 
-            
             alert('Transaktion erfolgreich gelöscht!');
-            // loadData(); // NICHT MEHR NÖTIG
         } catch (err) {
             console.error("Fehler beim Löschen:", err);
             setError(err.message || "Transaktion konnte nicht gelöscht werden.");
         }
     };
 
+    // NEUE FUNKTION: Fügt das Gehalt als neue Einnahme hinzu
+    const handleAddSalary = async () => {
+        const amount = parseFloat(salaryInput);
+        if (isNaN(amount) || amount <= 0) {
+            alert("Bitte einen gültigen Betrag eingeben.");
+            return;
+        }
+
+        const salaryTransaction = {
+            description: "Gehaltszahlung (Manuell)",
+            amount: amount,
+            type: 'Einnahme', 
+            category: 'Gehalt',
+            date: new Date().toISOString().split('T')[0]
+        };
+
+        // Ruft die API zum Speichern auf (als Einnahme)
+        await handleAdd(salaryTransaction);
+        
+        // Inputfeld zurücksetzen
+        setSalaryInput(0); 
+    };
+
     const totalBalance = transactions.reduce((acc, t) => {
-        // Robusterer Umgang mit nicht-numerischen Beträgen, falls die API sie zulässt
         const amount = typeof t.amount === 'number' ? t.amount : 0;
         return acc + (t.type === 'Einnahme' ? amount : -amount);
     }, 0);
     
     return (
-        <div style={{ padding: '40px', maxWidth: '800px', margin: 'auto', fontFamily: 'Arial' }}>
-            <h1>💰 Mein Budget Tracker</h1>
-            <p>API-Status: {error ? <span style={{ color: 'red' }}>FEHLER</span> : <span style={{ color: 'green' }}>Verbunden</span>}</p>
+        // *Alte Inline-Styles entfernt und Klassen zugewiesen*
+        <div className="tracker-container">
             
-            <h2 style={{ color: totalBalance >= 0 ? 'green' : 'red' }}>
-                Gesamt-Saldo: {loading ? '...' : `${totalBalance.toFixed(2)} €`}
-            </h2>
-            <hr />
+            <header className="tracker-header">
+                <h1>💰 Mein Budget Tracker</h1>
+                <div className="status-indicator">
+                    API-Status: <span className={error ? 'status-error' : 'status-ok'}>
+                        {error ? 'FEHLER' : 'Verbunden'}
+                    </span>
+                </div>
+            </header>
+            
+            <div className="balance-box">
+                <h2 className={totalBalance >= 0 ? 'balance-positive' : 'balance-negative'}>
+                    <span>Gesamt-Saldo: {loading ? '...' : `${totalBalance.toFixed(2)} €`}</span>
+                    
+                    {/* NEUE GEHALTS-INPUT-STRUKTUR */}
+                    <div className="salary-input-group">
+                        <input
+                            type="number"
+                            value={salaryInput}
+                            onChange={(e) => setSalaryInput(e.target.value)}
+                            placeholder="Gehalt €"
+                            min="0.01"
+                            step="0.01"
+                            className="salary-input" // Neue Klasse
+                        />
+                        <button 
+                            onClick={handleAddSalary}
+                            className="salary-button" // Neue Klasse
+                        >
+                            + Gehalt
+                        </button>
+                    </div>
+                    {/* ENDE NEUE GEHALTS-INPUT-STRUKTUR */}
+                </h2>
+            </div>
+            
+            <section className="form-section">
+                <h3>Neue Transaktion erfassen</h3>
+                <TransactionForm onSubmit={handleAdd} />
+            </section>
 
-            <h3>Neue Transaktion erfassen</h3>
-            <TransactionForm onSubmit={handleAdd} />
-            <hr />
-
-            <h3>Alle Transaktionen</h3>
-            {loading ? <p>Lade Transaktionen...</p> : (
-                <TransactionList 
-                    transactions={transactions} 
-                    onDelete={handleDelete} 
-                />
-            )}
-            {error && <p style={{ color: 'red', fontWeight: 'bold' }}>Fehler: {error}</p>}
+            <section className="list-section">
+                <h3>Alle Transaktionen</h3>
+                {loading ? <p>Lade Transaktionen...</p> : (
+                    <TransactionList 
+                        transactions={transactions} 
+                        onDelete={handleDelete} 
+                    />
+                )}
+            </section>
+            
+            {error && <p className="error-message">Fehler: {error}</p>}
         </div>
     );
 }
